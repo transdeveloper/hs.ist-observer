@@ -1,0 +1,1 @@
+tldr: collect data, process later on to build an average time of HSIST being open
