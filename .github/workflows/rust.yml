@@ -37,7 +37,7 @@ jobs:
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
             cargo build --release --target ${{ matrix.target }}
           else
-            cargo install cross --stable
+            cargo install cross -- --stable
             cross build --release --target ${{ matrix.target }}
           fi
 
