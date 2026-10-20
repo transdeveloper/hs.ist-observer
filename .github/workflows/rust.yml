@@ -5,25 +5,46 @@ on:
     branches: [ "master" ]
 
 jobs:
-  release:
-    name: release ${{ matrix.target }}
-    runs-on: ubuntu-latest
+  build:
+    name: Build ${{ matrix.target }}
+    # We use macos-latest for Apple builds, and ubuntu-latest for others to ensure smooth cross-compilation
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-pc-windows-gnu
-            archive: zip
+            os: ubuntu-latest
+            binary_name: hst-observer-windows-x86_64
           - target: x86_64-unknown-linux-musl
-            archive: tar.gz tar.xz tar.zst
+            os: ubuntu-latest
+            binary_name: hst-observer-linux-x86_64
           - target: x86_64-apple-darwin
-            archive: zip
+            os: macos-latest
+            binary_name: hst-observer-darwin
+
     steps:
-      - uses: actions/checkout@master
-      - name: Compile and release
-        uses: rust-build/rust-build.action
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          RUSTTARGET: ${{ matrix.target }}
-          ARCHIVE_TYPES: ${{ matrix.archive }}
+          targets: ${{ matrix.target }}
+
+      - name: Run Compilation
+        # For non-mac targets, cross simplifies compiling for musl and gnu windows on linux
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            cargo build --release --target ${{ matrix.target }}
+          else
+            cargo install cross --git https://github.com
+            cross build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/${{ matrix.binary_name }}
