@@ -7,7 +7,7 @@ on:
 jobs:
   build:
     name: Build ${{ matrix.target }}
-    # We use macos-latest for Apple builds, and ubuntu-latest for others to ensure smooth cross-compilation
+    # We use macos-latest for Apple builds, and ubuntu-latest for others to ensure smooth cross-compilation.
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -33,12 +33,11 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Run Compilation
-        # For non-mac targets, cross simplifies compiling for musl and gnu windows on linux
         run: |
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
             cargo build --release --target ${{ matrix.target }}
           else
-            cargo install cross --git https://github.com
+            cargo install cross --stable
             cross build --release --target ${{ matrix.target }}
           fi
 
