@@ -1,14 +1,24 @@
 mod http;
 
-use std::net::TcpListener;
+use std::net::{SocketAddr, TcpListener};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::fs::{File, OpenOptions};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(version, about = "Server to determine when the local hackerspace is open.")]
+struct Args {
+	#[arg(short, long, default_value = "127.0.0.1:8080")]
+	bind: SocketAddr,
+}
 
 fn main() {
+	let args = Args::parse();
+
 	let mut initial_read = String::new();
 	if let Ok(file) = OpenOptions::new().read(true).open("observed.jsonl") {
 		let reader = BufReader::new(file);
@@ -70,8 +80,8 @@ fn main() {
 		}
 	});
 
-	let bind = "0.0.0.0:8080";
-	let listener = match TcpListener::bind(bind) {
+	let bind = args.bind;
+	let listener = match TcpListener::bind(args.bind) {
 		Ok(output) => output,
 		Err(e) => {
 			eprintln!("Failed to bind to {}: {}", bind, e);
