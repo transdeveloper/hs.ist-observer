@@ -1,10 +1,13 @@
+mod http;
+
 use std::net::TcpListener;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::process::{Command};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::fs::{File, OpenOptions};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
+// use crate::http::request_handler::process;
 
 fn main() {
 	let mut initial_read = String::new();
@@ -68,7 +71,7 @@ fn main() {
 		}
 	});
 
-	let bind = "127.0.0.1:8080";
+	let bind = "0.0.0.0:8080";
 	let listener = match TcpListener::bind(bind) {
 		Ok(output) => output,
 		Err(e) => {
@@ -78,81 +81,5 @@ fn main() {
 	};
 
 	println!("Webserver listening on http://{}/", bind);
-
-	for stream in listener.incoming() {
-		match stream {
-			Ok(mut stream) => {
-				let thread_shared_outp = Arc::clone(&shared_outp);
-				spawn(move || {
-					let mut buffer = [0; 4096];
-					let mut request = Vec::with_capacity(4096);
-					// let _ = stream.read(&mut buffer).unwrap();
-
-					loop {
-						let bytes_read = match stream.read(&mut buffer) {
-							Ok(0) => return,
-							Ok(bytes_read) => bytes_read,
-							Err(e) => {
-								eprintln!("Failed to read request: {}", e);
-								return;
-							}
-						};
-
-						request.extend_from_slice(&buffer[..bytes_read]);
-
-						if request.len() > 16 * 1024 {
-							let _ = stream.write_all(b"\
-							HTTP/1.1 431 Request Header Fields Too Large\r\n\
-							Content-Length: 0\r\n\
-							Connection: close\r\n\
-							\r\n\\");
-							return;
-						}
-
-						if request.windows(4).any(|window| window == b"\r\n\r\n") {
-							break;
-						}
-					}
-
-					let request_string = String::from_utf8_lossy(&request);
-					// let http_stream = stream.read(&mut buffer).unwrap();
-					let mut http_response = "HTTP/1.1 404 Not Found\r\n\
-					Content-Length: 9\r\n\
-					Connection: close\r\n\
-					\r\n\
-					Not Found".to_string();
-
-					if request_string.contains("GET / HTTP") {
-						let historical_data = match thread_shared_outp.lock() {
-							Ok(lock) => lock.clone(),
-							Err(e) => {
-								eprintln!("An error occurred while trying to lock thread_output. {}", e);
-								return;
-							}
-						};
-
-						if !historical_data.is_empty() {
-							http_response = format!("\
-							HTTP/1.1 200 OK\r\n\
-							Content-Type: application/jsonl\r\n\
-							Content-Length: {}\r\n\
-							Connection: close\r\n\
-							\r\n\
-							{}", historical_data.len(), historical_data);
-						} else {
-							http_response = String::from("\
-							HTTP/1.1 204 No Content\r\n\
-							Content-Length: 0\r\n\
-							Connection: close\r\n\
-							\r\n");
-						}
-					}
-					stream.write_all(http_response.as_bytes()).expect("An unexpected error occurred while writing to socket");
-				});
-			}
-			Err(e) => {
-				eprintln!("Failed to accept connection: {}", e);
-			}
-		}
-	}
+	http::request_handler::serve(listener, shared_outp);
 }
