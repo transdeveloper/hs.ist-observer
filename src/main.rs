@@ -3,12 +3,8 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Command};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::fs::{File, OpenOptions};
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
-
-static OBSERVED_FILE: LazyLock<PathBuf> =
-	LazyLock::new(|| PathBuf::from("observed.jsonl"));
 
 fn main() {
 	let mut initial_read = String::new();
@@ -52,11 +48,12 @@ fn main() {
 
 				// output_buffer.clear();
 				output_buffer.push_str(&updated_text);
-				if let Ok(file) = OpenOptions::new().write(true).open(&*OBSERVED_FILE) {
+				output_buffer.push('\n');
+				if let Ok(file) = OpenOptions::new().append(true).open("observed.jsonl") {
 					writeln!(&file, "{}", &updated_text).unwrap();
 					println!("LOOP: Appended new event to history");
 				}else{
-					println!("LOOP: Couldn't write to {}", Path::new(&*OBSERVED_FILE).display());
+					println!("LOOP: Couldn't write to observed.jsonl");
 				}
 
 			}else{
