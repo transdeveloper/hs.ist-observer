@@ -7,3 +7,6 @@ edition = "2024"
 chrono = "0.4.45"
 chrono-tz = "0.10.4"
 serde_json = "1.0.154"
+
+[profile.release]
+opt-level = 3

@@ -7,7 +7,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::fs::{File, OpenOptions};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
-// use crate::http::request_handler::process;
 
 fn main() {
 	let mut initial_read = String::new();
@@ -24,7 +23,7 @@ fn main() {
 	}
 
 	let shared_outp = Arc::new(Mutex::new(initial_read));
-	let timer_output_close = Arc::clone(&shared_outp);
+	let timer_outp_close = Arc::clone(&shared_outp);
 
 	spawn(move || {
 		loop {
@@ -48,7 +47,7 @@ fn main() {
 				let json_first_half = &curl_response[..json_end_position];
 				let updated_text = format!("{},\"timeObserved\":\"{}\"}}", json_first_half, current_time_now);
 				{
-					let mut output_buffer = timer_output_close.lock().unwrap();
+					let mut output_buffer = timer_outp_close.lock().unwrap();
 					// output_buffer.clear();
 					output_buffer.push_str(&updated_text);
 					output_buffer.push('\n');
