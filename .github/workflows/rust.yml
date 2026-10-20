@@ -45,5 +45,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.target }}
-          path: |
-            target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+          path: target/**/release/hsist-observer*
+          if-no-files-found: error
