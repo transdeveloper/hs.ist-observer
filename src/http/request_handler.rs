@@ -2,13 +2,17 @@ use std::net::TcpListener;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread::{spawn};
+use serde_json::{json};
+use crate::Args;
 use crate::http::bin::averages::calculate_averages;
 
-pub fn serve(listener: TcpListener, shared_outp: Arc<Mutex<String>>) {
+pub fn serve(listener: TcpListener, shared_outp: Arc<Mutex<String>>, shared_arguments: Arc<Mutex<Args>>) {
 	for stream in listener.incoming() {
 		match stream {
 			Ok(mut stream) => {
 				let thread_shared_outp = Arc::clone(&shared_outp);
+				let arguments = Arc::clone(&shared_arguments);
+
 				spawn(move || {
 					let mut buffer = [0; 4096];
 					let mut request = Vec::with_capacity(4096);
@@ -41,6 +45,31 @@ pub fn serve(listener: TcpListener, shared_outp: Arc<Mutex<String>>) {
 					}
 
 					let request_string = String::from_utf8_lossy(&request);
+
+					let args = match arguments.lock() {
+						Ok(args) => args,
+						Err(e) => {
+							eprintln!("Error occurred while reading arguments: {}", e);
+							return;
+						}
+					};
+
+					let response = if !request_string.contains("Authorization:") {
+						Some(json!({"error": "Authorization header not supplied"}))
+					} else if !request_string.contains(&format!("Authorization: Bearer {}", args.api_key)) {
+						Some(json!({"error": "Invalid API key supplied"}))
+					} else {
+						None
+					};
+
+					if let Some(response) = response {
+						let body = response.to_string();
+						let _ = stream.write_all(format!(
+							"HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+							body.len(), body
+						).as_bytes());
+						return;
+					}
 					// let http_stream = stream.read(&mut buffer).unwrap();
 
 					let (status, body) = if request_string.starts_with("GET /averages HTTP") {
@@ -65,11 +94,31 @@ pub fn serve(listener: TcpListener, shared_outp: Arc<Mutex<String>>) {
 						("404 Not Found", "{\"error\":\"Resource not found\"}".to_string())
 					};
 
+					let json_body: Vec<serde_json::Value> = match body
+						.lines()
+						.filter(|line| !line.trim().is_empty())
+						.map(|line| serde_json::from_str(line)) // essentially: fn x(line: &str) -> serde_json::Result<serde_json::Value>{ return serde_json::from_str( line ); }
+						.collect::<Result<_, _>>() { // Ok, Err?
+						Ok(body) => body,
+						Err(e) => {
+							eprintln!("Failed to parse body: {}", e);
+							return;
+						}
+					};
+
+					let json_string = match serde_json::to_string(&json_body) {
+						Ok(json_string) => json_string,
+						Err(e) => {
+							eprintln!("Failed to serialize body: {}", e);
+							return;
+						}
+					};
+
 					let response = format!(
-						"HTTP/1.1 {}\r\nContent-Type: application/jsonl\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+						"HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
 						status,
-						&body.len(),
-						body
+						&json_string.len(),
+						json_string
 					);
 
 					let _ = stream.write_all(response.as_bytes());

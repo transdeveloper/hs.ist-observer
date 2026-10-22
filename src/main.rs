@@ -2,18 +2,19 @@ mod http;
 
 use std::net::{SocketAddr, TcpListener};
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Command};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::fs::{File, OpenOptions};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
-use clap::Parser;
+use clap::{Parser};
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Server to determine when the local hackerspace is open.")]
 struct Args {
 	#[arg(short, long, default_value = "127.0.0.1:8080")]
 	bind: SocketAddr,
+	#[arg(short, long, default_value = "somerandomstring")]
+	api_key: String,
 }
 
 fn main() {
@@ -37,28 +38,32 @@ fn main() {
 
 	spawn(move || {
 		loop {
-			let curl_command = match Command::new("curl").arg("https://status.hackerspace.ist").output(){
-				Ok(output) => output,
+			let api_request = match reqwest::blocking::get("https://status.hackerspace.ist"){
+				Ok(text) => text,
 				Err(e) => {
-					eprintln!("LOOP: Failed to execute curl: {}", e);
-					sleep(Duration::from_secs(5 * 60));
-					continue;
+					eprintln!("Network error while requesting API: {}", e);
+					return;
 				}
 			};
 
-			let curl_response = String::from_utf8_lossy(&curl_command.stdout);
+			let api_response = match api_request.text() {
+				Ok(text) => text.to_string(),
+				Err(e) => {
+					eprintln!("Failed to read API Response: {}", e);
+					return;
+				}
+			};
 
 			let current_time_now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
-			// let json_end_position = curl_response.rfind('}').unwrap();
-			// let json_first_half = &curl_response[..json_end_position];
-
-			if let Some(json_end_position) = curl_response.rfind('}') {
-				let json_first_half = &curl_response[..json_end_position];
+			if let Some(json_end_position) = api_response.rfind('}') {
+				let json_first_half = &api_response[..json_end_position];
 				let updated_text = format!("{},\"timeObserved\":\"{}\"}}", json_first_half, current_time_now);
+
+				// comment: this should make it so we release the lock by running the push operation in a different scope.
+				// tldr: lock doesn't wait for filesystem operations(make an issue if i'm wrong)
 				{
 					let mut output_buffer = timer_outp_close.lock().unwrap();
-					// output_buffer.clear();
 					output_buffer.push_str(&updated_text);
 					output_buffer.push('\n');
 				}
@@ -71,7 +76,6 @@ fn main() {
 				}else{
 					println!("LOOP: Couldn't write to observed.jsonl");
 				}
-
 			}else{
 				println!("LOOP: Bad data from hackerspace api?");
 			}
@@ -90,5 +94,5 @@ fn main() {
 	};
 
 	println!("Webserver listening on http://{}/", bind);
-	http::request_handler::serve(listener, shared_outp);
+	http::request_handler::serve(listener, shared_outp, Arc::new(Mutex::new(args)));
 }
