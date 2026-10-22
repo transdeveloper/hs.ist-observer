@@ -54,31 +54,15 @@ pub fn serve(listener: TcpListener, shared_outp: Arc<Mutex<String>>, shared_argu
 						}
 					};
 
-					let is_request_authenticated = {
-						let authorization = request_string.lines().find_map(|line|{
-							let (name, val) = line.split_once(':')?;
-
-							if name.trim().eq_ignore_ascii_case("Authorization") {
-								Some(val.trim())
-							} else{
-								None
-							}
-						});
-
-						match authorization {
-							None => Some(json!({"error": "Authorization header not supplied"})),
-							Some(auth_header_val) => {
-								let expected = format!("Bearer {}", args.api_key);
-								if auth_header_val != expected {
-									Some(json!({"error": "Invalid API key supplied"}))
-								} else{
-									None
-								}
-							}
-						}
+					let response = if !request_string.contains("Authorization:") {
+						Some(json!({"error": "Authorization header not supplied"}))
+					} else if !request_string.contains(&format!("Authorization: Bearer {}", args.api_key)) {
+						Some(json!({"error": "Invalid API key supplied"}))
+					} else {
+						None
 					};
 
-					if let Some(response) = is_request_authenticated {
+					if let Some(response) = response {
 						let body = response.to_string();
 						let _ = stream.write_all(format!(
 							"HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
